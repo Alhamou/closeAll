@@ -22,9 +22,7 @@ The icon in the menu bar is a small stack of windows. Click it, review the list,
 
 Each row shows the app’s own icon, so you can recognize it before it closes. Uncheck an app to keep it. That choice is remembered.
 
-![closeAll icon, 512 by 512](docs/icon-512.png)
-
-The picture above is the repository image: [`docs/icon-512.png`](docs/icon-512.png), 512×512 pixels. Use that file as the GitHub social preview (repository Settings → General → Social preview).
+The repository image is [`docs/icon-512.png`](docs/icon-512.png), 512×512 pixels, shown centered above. Use that file as the GitHub social preview (repository Settings → General → Social preview).
 
 ## What closes
 
