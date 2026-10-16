@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/icon-512.png" width="128" alt="closeAll icon">
+  <img src="docs/logo-512.png" width="128" alt="closeAll icon">
 </p>
 
 <h1 align="center">closeAll</h1>
@@ -22,7 +22,7 @@ The icon in the menu bar is a small stack of windows. Click it, review the list,
 
 Each row shows the app’s own icon, so you can recognize it before it closes. Uncheck an app to keep it. That choice is remembered.
 
-The repository image is [`docs/icon-512.png`](docs/icon-512.png), 512×512 pixels, shown centered above. Use that file as the GitHub social preview (repository Settings → General → Social preview).
+The repository image is [`docs/logo-512.png`](docs/logo-512.png), 512×512 pixels, shown centered above. Use that file as the GitHub social preview (repository Settings → General → Social preview).
 
 ## What closes
 
@@ -93,7 +93,7 @@ swift run closeAll -- --render-preview /tmp/closeall-panel.png
 | `Sources/closeAllCore` | Pure quit rules. No AppKit. Covered by unit tests. |
 | `Sources/closeAll` | Menu-bar app. |
 | `Tests/closeAllCoreTests` | Unit tests. |
-| `docs/icon-512.png` | Repository image, 512×512. |
+| `docs/logo-512.png` | Repository image, 512×512. Windows only, no outer frame. |
 | `Resources/AppIcon.icns` | Icon inside the app bundle. |
 | `Scripts/package-app.sh` | Builds `build/closeAll.app`. |
 | `Scripts/verify-live-plan.py` | Fails if a dry-run would quit Finder or this process. |
