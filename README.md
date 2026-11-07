@@ -2,7 +2,7 @@
   <img src="docs/logo-512.png" width="128" alt="closeAll icon">
 </p>
 
-<h1 align="center">closeAll</h1>
+<h1 align="center">CloseAll</h1>
 
 <p align="center">
   Force-quit every normal Dock app from one menu-bar button on macOS.
