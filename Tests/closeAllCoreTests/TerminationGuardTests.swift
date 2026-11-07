@@ -49,6 +49,13 @@ final class TerminationGuardTests: XCTestCase {
         XCTAssertFalse(TerminationGuard.allow(requested, live: live, exclusions: exclusions()))
     }
 
+    func testBackgroundAppIsAllowedOnlyWhenChosen() {
+        let menuBar = runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 31, policy: .accessory)
+        XCTAssertFalse(TerminationGuard.allow(menuBar, live: menuBar, exclusions: exclusions()))
+        let rules = exclusions(closedBackground: ["com.fiplab.copyclip"])
+        XCTAssertTrue(TerminationGuard.allow(menuBar, live: menuBar, exclusions: rules))
+    }
+
     func testAllowsMatchingAppsWithNoBundleIdentifier() {
         let app = runningApp("Untitled", pid: 12)
         XCTAssertTrue(TerminationGuard.allow(app, live: app, exclusions: exclusions()))

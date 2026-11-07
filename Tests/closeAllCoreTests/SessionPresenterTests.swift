@@ -14,12 +14,31 @@ final class SessionPresenterTests: XCTestCase {
             exclusions: exclusions(keptBundles: ["com.todesktop.230313mzl4w4u92"])
         )
         let rows = SessionPresenter.presentedApps(snapshot)
-        XCTAssertEqual(rows.map(\.title), ["Cursor", "Safari"])
-        XCTAssertEqual(rows.map(\.willQuit), [false, true])
+        XCTAssertEqual(rows.map(\.title), ["Cursor", "Safari", "Amphetamine"])
+        XCTAssertEqual(rows.map(\.willQuit), [false, true, false])
+        XCTAssertEqual(rows.map(\.group), [.dock, .dock, .background])
         XCTAssertEqual(rows.map(\.bundleIdentifier), [
             "com.todesktop.230313mzl4w4u92",
             "com.apple.safari",
+            "com.if.amphetamine",
         ])
+    }
+
+    func testBackgroundAppsComeAfterDockAppsAndShowTheirChoice() {
+        let snapshot = SessionSnapshot(
+            apps: [
+                runningApp("Zoom", bundle: "us.zoom.xos", pid: 3),
+                runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4, policy: .accessory),
+                runningApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 5, policy: .accessory),
+                runningApp("Siri", bundle: "com.apple.Siri", pid: 6, policy: .accessory),
+                runningApp("Agent", bundle: "com.example.agent", pid: 7, policy: .prohibited),
+            ],
+            exclusions: exclusions(closedBackground: ["com.fiplab.copyclip"])
+        )
+        let rows = SessionPresenter.presentedApps(snapshot)
+        XCTAssertEqual(rows.map(\.title), ["Zoom", "AmneziaWG", "CopyClip"])
+        XCTAssertEqual(rows.map(\.group), [.dock, .background, .background])
+        XCTAssertEqual(rows.map(\.willQuit), [true, false, true])
     }
 
     func testDisambiguatesDuplicateNames() {

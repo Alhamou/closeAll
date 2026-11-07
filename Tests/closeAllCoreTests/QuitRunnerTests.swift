@@ -10,11 +10,16 @@ private final class FakeSystem {
     var ignoresForceTerminate: Set<Int32> = []
     /// Pids that refuse every attempt (for example, owned by another user).
     var unkillable: Set<Int32> = []
-    /// Called after a pid dies, to model a helper relaunching the app.
+    /// Pids that accept every attempt but never exit.
+    var immortal: Set<Int32> = []
+    /// Called after a pid dies.
     var onDeath: (@MainActor (RunningApp) -> Void)?
+    /// Called whenever time passes, to model a helper that relaunches an app a moment later.
+    var onSleep: (@MainActor () -> Void)?
     var forceTerminated: [Int32] = []
     var killed: [Int32] = []
     var sleeps = 0
+    var slept: Duration = .zero
 
     init(_ apps: [RunningApp]) {
         self.apps = apps
@@ -38,15 +43,26 @@ private final class FakeSystem {
                 self.die(app)
                 return true
             },
-            isRunning: { self.alive.contains($0.processIdentifier) },
-            sleep: { _ in self.sleeps += 1 },
+            isRunning: { app in
+                // Like the real check: the pid must be alive and still belong to the same app.
+                guard self.alive.contains(app.processIdentifier) else { return false }
+                let live = self.apps.last { $0.processIdentifier == app.processIdentifier }
+                return BundleIdentity.same(live?.bundleIdentifier, app.bundleIdentifier)
+            },
+            sleep: { duration in
+                self.sleeps += 1
+                self.slept += duration
+                self.onSleep?()
+            },
             maxPasses: maxPasses,
             pollInterval: .milliseconds(100),
-            waitPerPass: .milliseconds(300)
+            waitPerPass: .milliseconds(300),
+            settleDelay: .milliseconds(50)
         )
     }
 
     private func die(_ app: RunningApp) {
+        guard !immortal.contains(app.processIdentifier) else { return }
         guard alive.remove(app.processIdentifier) != nil else { return }
         onDeath?(app)
     }
@@ -122,15 +138,20 @@ final class QuitRunnerTests: XCTestCase {
 
     func testRelaunchedCopyOfAPlannedAppIsClosedToo() async {
         let system = FakeSystem([runningApp("Docker", bundle: "com.docker.docker", pid: 30)])
+        // The helper brings the app back a moment after it dies, not instantly.
+        var relaunchDue = false
         var relaunched = false
         system.onDeath = { app in
-            guard !relaunched, app.processIdentifier == 30 else { return }
+            if app.processIdentifier == 30 { relaunchDue = true }
+        }
+        system.onSleep = {
+            guard relaunchDue, !relaunched else { return }
             relaunched = true
-            let copy = runningApp("Docker", bundle: "com.docker.docker", pid: 31)
-            system.apps.append(copy)
+            system.apps.append(runningApp("Docker", bundle: "com.docker.docker", pid: 31))
             system.alive.insert(31)
         }
         let outcome = await system.runner().run(exclusions: exclusions())
+        XCTAssertTrue(relaunched)
         XCTAssertEqual(system.killed, [31])
         XCTAssertEqual(Set(outcome.closed), [30, 31])
         XCTAssertEqual(outcome.stillRunning, [])
@@ -148,23 +169,77 @@ final class QuitRunnerTests: XCTestCase {
         XCTAssertTrue(system.alive.contains(50))
     }
 
-    func testReportsAppsThatCannotBeClosed() async {
+    func testReportsAppsThatRefuseAndDoesNotRetryOrWaitForThem() async {
         let mail = runningApp("Mail", bundle: "com.apple.mail", pid: 4)
         let system = FakeSystem([mail, runningApp("Notes", bundle: "com.apple.Notes", pid: 7)])
         system.unkillable = [4]
         let outcome = await system.runner(maxPasses: 3).run(exclusions: exclusions())
         XCTAssertEqual(outcome.closed, [7])
         XCTAssertEqual(outcome.stillRunning, [mail])
-        // One polite try plus a kill in each pass, then it gives up.
+        // One polite try and one kill, then it stops asking.
         XCTAssertEqual(system.forceTerminated, [4, 7])
-        XCTAssertEqual(system.killed, [4, 4, 4])
+        XCTAssertEqual(system.killed, [4])
+        // Only the pause before the final check. No waiting for an app that said no.
+        XCTAssertEqual(system.slept, .milliseconds(50))
     }
 
-    func testWaitIsBounded() async {
+    func testWaitIsBoundedForAnAppThatNeverExits() async {
+        let mail = runningApp("Mail", bundle: "com.apple.mail", pid: 4)
+        let system = FakeSystem([mail])
+        system.immortal = [4]
+        let outcome = await system.runner(maxPasses: 2).run(exclusions: exclusions())
+        XCTAssertEqual(outcome.stillRunning, [mail])
+        XCTAssertEqual(system.killed, [4])
+        // Each pass: 300 ms of 100 ms polls, then a 50 ms pause before the re-scan.
+        XCTAssertEqual(system.sleeps, 8)
+        XCTAssertEqual(system.slept, .milliseconds(700))
+    }
+
+    func testPlannedAppThatHidesItsDockIconIsReportedNotDropped() async {
+        let teams = runningApp("Teams", bundle: "com.microsoft.teams2", pid: 12)
+        let system = FakeSystem([teams])
+        system.ignoresForceTerminate = [12]
+        var hidden = false
+        system.onSleep = {
+            guard !hidden else { return }
+            hidden = true
+            // Same process, now a menu-bar app the user did not check.
+            system.apps = [runningApp("Teams", bundle: "com.microsoft.teams2", pid: 12, policy: .accessory)]
+        }
+        let outcome = await system.runner().run(exclusions: exclusions())
+        XCTAssertEqual(outcome.stillRunning.map(\.processIdentifier), [12])
+        XCTAssertEqual(system.killed, [])
+    }
+
+    func testReusedPidOfAnotherAppIsNotKilled() async {
         let system = FakeSystem([runningApp("Mail", bundle: "com.apple.mail", pid: 4)])
-        system.unkillable = [4]
-        _ = await system.runner(maxPasses: 2).run(exclusions: exclusions())
-        // 300 ms per pass at 100 ms polls.
-        XCTAssertEqual(system.sleeps, 6)
+        system.onDeath = { _ in
+            // Another app gets the same pid right away.
+            system.apps = [runningApp("Music", bundle: "com.apple.Music", pid: 4)]
+            system.alive.insert(4)
+        }
+        let outcome = await system.runner().run(exclusions: exclusions())
+        XCTAssertEqual(system.killed, [])
+        XCTAssertTrue(system.alive.contains(4))
+        XCTAssertEqual(outcome, QuitOutcome(closed: [4], stillRunning: []))
+    }
+
+    func testChosenBackgroundAppClosesAndOthersStay() async {
+        let system = FakeSystem([
+            runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 40, policy: .accessory),
+            runningApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 41, policy: .accessory),
+        ])
+        let rules = exclusions(closedBackground: ["com.fiplab.copyclip"])
+        let outcome = await system.runner().run(exclusions: rules)
+        XCTAssertEqual(system.forceTerminated, [40])
+        XCTAssertEqual(outcome, QuitOutcome(closed: [40], stillRunning: []))
+        XCTAssertTrue(system.alive.contains(41))
+    }
+
+    func testPausesOnceBeforeTheFinalCheckWhenEverythingClosed() async {
+        let system = FakeSystem([runningApp("Notes", bundle: "com.apple.Notes", pid: 7)])
+        let outcome = await system.runner().run(exclusions: exclusions())
+        XCTAssertEqual(outcome, QuitOutcome(closed: [7], stillRunning: []))
+        XCTAssertEqual(system.slept, .milliseconds(50))
     }
 }

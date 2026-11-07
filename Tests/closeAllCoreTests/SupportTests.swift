@@ -27,6 +27,7 @@ final class SupportTests: XCTestCase {
             ["a.app", "b.app"]
         )
         XCTAssertEqual(KeptAppsStore.defaultsKey, "keptBundleIdentifiers")
+        XCTAssertEqual(KeptAppsStore.closedBackgroundDefaultsKey, "closedBackgroundBundleIdentifiers")
     }
 
     func testDryRunReportSplitsTargetsAndSkipped() throws {
@@ -50,5 +51,20 @@ final class SupportTests: XCTestCase {
         let decoded = try JSONDecoder().decode(DryRunReport.self, from: Data(report.json().utf8))
         XCTAssertEqual(decoded, report)
         XCTAssertTrue(try report.json().contains("\"protectedSystem\""))
+    }
+
+    func testDryRunReportShowsBackgroundChoices() {
+        let snapshot = SessionSnapshot(
+            apps: [
+                runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4, policy: .accessory),
+                runningApp("Haki", bundle: "com.example.haki", pid: 5, policy: .accessory),
+            ],
+            exclusions: exclusions(closedBackground: ["com.fiplab.copyclip"])
+        )
+        let report = DryRunReport.make(snapshot)
+        XCTAssertEqual(report.targets.map(\.name), ["CopyClip"])
+        XCTAssertEqual(report.targets.first?.activationPolicy, "accessory")
+        XCTAssertEqual(report.skipped.map(\.name), ["Haki"])
+        XCTAssertEqual(report.skipped.first?.reason, SkipReason.backgroundNotChosen.rawValue)
     }
 }

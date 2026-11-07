@@ -15,8 +15,10 @@ public struct QuitOutcome: Equatable, Sendable {
 ///
 /// `NSRunningApplication.forceTerminate()` only reports that a request was sent.
 /// An app can survive it, refuse it, or be relaunched by a helper right away.
-/// The runner waits for every target to exit, re-scans, and sends SIGKILL to
-/// anything that is still running, for a bounded number of passes.
+/// The runner waits for every target to exit, pauses briefly so a relaunched copy
+/// can appear, re-scans, and sends SIGKILL to anything that is still running,
+/// for a bounded number of passes. An app that refuses, or that may no longer be
+/// closed, is not retried. It is reported in `stillRunning` while it is alive.
 @MainActor
 public struct QuitRunner {
     public var currentApps: @MainActor () -> [RunningApp]
@@ -29,6 +31,9 @@ public struct QuitRunner {
     public var maxPasses: Int
     public var pollInterval: Duration
     public var waitPerPass: Duration
+    /// Pause before each re-scan. A helper needs a moment to relaunch an app, and
+    /// `NSWorkspace` only refreshes its app list while the main run loop turns.
+    public var settleDelay: Duration
 
     public init(
         currentApps: @escaping @MainActor () -> [RunningApp],
@@ -38,7 +43,8 @@ public struct QuitRunner {
         sleep: @escaping @MainActor (Duration) async -> Void,
         maxPasses: Int = 3,
         pollInterval: Duration = .milliseconds(100),
-        waitPerPass: Duration = .seconds(2)
+        waitPerPass: Duration = .seconds(2),
+        settleDelay: Duration = .milliseconds(500)
     ) {
         self.currentApps = currentApps
         self.forceTerminate = forceTerminate
@@ -48,6 +54,7 @@ public struct QuitRunner {
         self.maxPasses = max(1, maxPasses)
         self.pollInterval = pollInterval
         self.waitPerPass = waitPerPass
+        self.settleDelay = settleDelay
     }
 
     public func run(exclusions: QuitExclusions) async -> QuitOutcome {
@@ -56,41 +63,79 @@ public struct QuitRunner {
             return QuitOutcome(closed: [], stillRunning: [])
         }
         // Later passes only touch what the user saw checked, or a relaunched copy of it.
-        let plannedPIDs = Set(initial.map(\.processIdentifier))
+        // A pid counts only while the same app owns it, so a reused pid is never a target.
+        var plannedByPID: [Int32: RunningApp] = [:]
+        for app in initial {
+            plannedByPID[app.processIdentifier] = app
+        }
         let plannedBundles = Set(initial.compactMap { BundleIdentity.normalize($0.bundleIdentifier) })
         func wasPlanned(_ app: RunningApp) -> Bool {
-            if plannedPIDs.contains(app.processIdentifier) { return true }
+            if let planned = plannedByPID[app.processIdentifier],
+               BundleIdentity.same(planned.bundleIdentifier, app.bundleIdentifier) {
+                return true
+            }
             guard let bundle = BundleIdentity.normalize(app.bundleIdentifier) else { return false }
             return plannedBundles.contains(bundle)
         }
 
         var closed: [Int32] = []
+        // Still alive, but refused or no longer allowed to close. Reported, never retried.
+        var givenUp: [RunningApp] = []
         var pending = initial
         for pass in 0..<maxPasses {
+            var sent: [RunningApp] = []
             for app in pending {
+                var accepted: Bool
                 if pass == 0 {
-                    if !forceTerminate(app) {
-                        _ = kill(app)
+                    accepted = forceTerminate(app)
+                    if !accepted {
+                        accepted = kill(app)
                     }
                 } else {
-                    _ = kill(app)
+                    accepted = kill(app)
+                }
+                if accepted {
+                    sent.append(app)
+                } else if isRunning(app) {
+                    givenUp.append(app)
                 }
             }
 
             var waited: Duration = .zero
-            while waited < waitPerPass, pending.contains(where: { isRunning($0) }) {
+            while waited < waitPerPass, sent.contains(where: { isRunning($0) }) {
                 await sleep(pollInterval)
                 waited += pollInterval
             }
 
-            for app in pending where !isRunning(app) && !closed.contains(app.processIdentifier) {
+            for app in sent where !isRunning(app) && !closed.contains(app.processIdentifier) {
                 closed.append(app.processIdentifier)
             }
 
-            pending = QuitPlanner.targets(for: currentApps(), exclusions: exclusions)
-                .filter { wasPlanned($0) && isRunning($0) }
+            await sleep(settleDelay)
+            let givenUpPIDs = Set(givenUp.map(\.processIdentifier))
+            pending = QuitPlanner.targets(for: currentApps(), exclusions: exclusions).filter { app in
+                guard wasPlanned(app), !givenUpPIDs.contains(app.processIdentifier) else { return false }
+                return isRunning(app)
+            }
+            // A planned app that is still alive but no longer a target, for example because it
+            // hid its Dock icon, is reported instead of being dropped without a word.
+            let pendingPIDs = Set(pending.map(\.processIdentifier))
+            for app in sent where !pendingPIDs.contains(app.processIdentifier)
+                && !givenUpPIDs.contains(app.processIdentifier) {
+                if isRunning(app) {
+                    givenUp.append(app)
+                }
+            }
             if pending.isEmpty { break }
         }
-        return QuitOutcome(closed: closed, stillRunning: pending)
+
+        var reportedPIDs: Set<Int32> = []
+        var stillRunning: [RunningApp] = []
+        for app in pending + givenUp where isRunning(app) {
+            if reportedPIDs.insert(app.processIdentifier).inserted {
+                stillRunning.append(app)
+            }
+        }
+        return QuitOutcome(closed: closed, stillRunning: stillRunning.sorted(by: QuitPlanner.sortApps))
     }
 }

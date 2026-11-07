@@ -34,17 +34,21 @@ public struct QuitExclusions: Equatable, Sendable {
     public var keptBundleIdentifiers: Set<String>
     /// Process ids kept for this session when an app has no bundle id.
     public var keptProcessIdentifiers: Set<Int32>
+    /// Background (menu-bar) apps the user chose to close too. They stay open unless listed here.
+    public var closedBackgroundBundleIdentifiers: Set<String>
 
     public init(
         ownProcessIdentifier: Int32,
         ownBundleIdentifier: String? = nil,
         keptBundleIdentifiers: Set<String> = [],
-        keptProcessIdentifiers: Set<Int32> = []
+        keptProcessIdentifiers: Set<Int32> = [],
+        closedBackgroundBundleIdentifiers: Set<String> = []
     ) {
         self.ownProcessIdentifier = ownProcessIdentifier
         self.ownBundleIdentifier = ownBundleIdentifier
         self.keptBundleIdentifiers = keptBundleIdentifiers
         self.keptProcessIdentifiers = keptProcessIdentifiers
+        self.closedBackgroundBundleIdentifiers = closedBackgroundBundleIdentifiers
     }
 }
 
