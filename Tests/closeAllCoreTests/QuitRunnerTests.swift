@@ -226,8 +226,8 @@ final class QuitRunnerTests: XCTestCase {
 
     func testChosenBackgroundAppClosesAndOthersStay() async {
         let system = FakeSystem([
-            runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 40, policy: .accessory),
-            runningApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 41, policy: .accessory),
+            menuBarApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 40),
+            menuBarApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 41),
         ])
         let rules = exclusions(closedBackground: ["com.fiplab.copyclip"])
         let outcome = await system.runner().run(exclusions: rules)

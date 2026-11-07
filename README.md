@@ -28,7 +28,7 @@ The repository image is [`docs/logo-512.png`](docs/logo-512.png), 512×512 pixel
 
 - Every app macOS treats as a normal application. Those are the apps you would otherwise right-click in the Dock and choose Quit.
 - Editors, browsers, and chat apps are included. Cursor is included until you uncheck it.
-- Background apps you check. The **Background apps** section lists menu-bar apps from other developers, such as a clipboard manager or a VPN client. They start unchecked, so nothing there closes unless you check it. The choice is remembered.
+- Background apps you check. The **Background apps** section lists menu-bar apps you installed in `/Applications` or `~/Applications`, such as a clipboard manager or a VPN client. They start unchecked, so nothing there closes unless you check it. The choice is remembered.
 
 closeAll checks that each app really exited. If one survives Force Quit or comes straight back, it sends a hard kill (SIGKILL), up to three times. Apps it still could not close are named in red.
 
@@ -37,7 +37,7 @@ closeAll checks that each app really exited. If one survives Force Quit or comes
 - **Finder**, so the desktop stays up.
 - **closeAll** itself, so the button is still there.
 - The Dock, Control Center, WindowServer, and the other processes that keep the login session alive.
-- Background apps you did not check. Apple's own menu-bar agents and processes with no window or menu are not listed at all.
+- Background apps you did not check. Apple's own menu-bar agents, helpers packed inside another app (such as Slack Helper), updaters kept in Library folders, and processes with no window or menu are not listed at all. They usually close with their parent app.
 - Any app you uncheck.
 
 ## Requirements

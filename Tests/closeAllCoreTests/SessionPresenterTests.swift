@@ -8,7 +8,7 @@ final class SessionPresenterTests: XCTestCase {
                 runningApp("Finder", bundle: "com.apple.finder", pid: 1),
                 runningApp("Cursor", bundle: "com.todesktop.230313mzl4w4u92", pid: 5),
                 runningApp("Safari", bundle: "com.apple.Safari", pid: 6),
-                runningApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 8, policy: .accessory),
+                menuBarApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 8),
                 runningApp("closeAll", bundle: "app.closeall.closeall", pid: 99),
             ],
             exclusions: exclusions(keptBundles: ["com.todesktop.230313mzl4w4u92"])
@@ -28,10 +28,14 @@ final class SessionPresenterTests: XCTestCase {
         let snapshot = SessionSnapshot(
             apps: [
                 runningApp("Zoom", bundle: "us.zoom.xos", pid: 3),
-                runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4, policy: .accessory),
-                runningApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 5, policy: .accessory),
+                menuBarApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4),
+                menuBarApp("AmneziaWG", bundle: "org.amnezia.awg", pid: 5),
                 runningApp("Siri", bundle: "com.apple.Siri", pid: 6, policy: .accessory),
                 runningApp("Agent", bundle: "com.example.agent", pid: 7, policy: .prohibited),
+                runningApp(
+                    "Slack Helper", bundle: "com.tinyspeck.slackmacgap.helper", pid: 9, policy: .accessory,
+                    path: "/Applications/Slack.app/Contents/Frameworks/Slack Helper.app"
+                ),
             ],
             exclusions: exclusions(closedBackground: ["com.fiplab.copyclip"])
         )

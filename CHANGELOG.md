@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A "Background apps" section lists menu-bar apps from other developers, such as
-  CopyClip or a VPN client. They are unchecked by default. Check one to close it too,
-  and closeAll remembers that choice. Apple's own agents and UI-less processes stay
-  hidden and are never closed.
+- A "Background apps" section lists menu-bar apps you installed in `/Applications`
+  or `~/Applications`, such as CopyClip or a VPN client. They are unchecked by default.
+  Check one to close it too, and closeAll remembers that choice. Apple's own agents,
+  helpers packed inside other apps (such as Slack Helper), updaters kept in Library
+  folders, and UI-less processes stay hidden and are never closed.
 
 ### Fixed
 
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The button shows "Closing…", and the checkboxes are locked until the run has
   finished, so a late change cannot be ignored.
 - A process id that another app takes over during the run is never targeted.
+- Another copy of closeAll is never a target, even when closeAll runs from `swift run`.
 - A keep choice for an app without a bundle id is dropped when that process exits,
   so a reused process id does not inherit it.
 

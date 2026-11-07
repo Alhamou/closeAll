@@ -95,7 +95,8 @@ enum MacRuntime {
             localizedName: displayName,
             processIdentifier: application.processIdentifier,
             activationPolicy: policy(application.activationPolicy),
-            isTerminated: application.isTerminated
+            isTerminated: application.isTerminated,
+            bundlePath: application.bundleURL?.path
         )
     }
 

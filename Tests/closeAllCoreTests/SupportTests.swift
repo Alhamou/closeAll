@@ -56,8 +56,8 @@ final class SupportTests: XCTestCase {
     func testDryRunReportShowsBackgroundChoices() {
         let snapshot = SessionSnapshot(
             apps: [
-                runningApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4, policy: .accessory),
-                runningApp("Haki", bundle: "com.example.haki", pid: 5, policy: .accessory),
+                menuBarApp("CopyClip", bundle: "com.fiplab.copyclip", pid: 4),
+                menuBarApp("Haki", bundle: "com.example.haki", pid: 5),
             ],
             exclusions: exclusions(closedBackground: ["com.fiplab.copyclip"])
         )

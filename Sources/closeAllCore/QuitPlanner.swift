@@ -13,7 +13,7 @@ public enum SkipReason: String, Codable, Equatable, Sendable {
 public enum AppGroup: String, Codable, Equatable, Sendable {
     /// A normal Dock app. Checked by default.
     case dock
-    /// A menu-bar or background app from another developer. Unchecked by default.
+    /// A menu-bar app the user installed in an Applications folder. Unchecked by default.
     case background
 }
 
@@ -30,6 +30,10 @@ public struct QuitDecision: Equatable, Sendable {
 }
 
 public enum QuitPlanner {
+    /// closeAll's own bundle id. Another copy of closeAll is never a target, even when this
+    /// process runs unbundled (for example from `swift run`).
+    public static let closeAllBundleIdentifier = "app.closeall.closeall"
+
     /// Decides which apps a force-quit is allowed to close.
     /// Finder, this process, and other session processes are never targets.
     /// Background apps close only when the user checked them.
@@ -131,10 +135,11 @@ public enum QuitPlanner {
         if app.processIdentifier == exclusions.ownProcessIdentifier {
             return .thisApp
         }
-        if let ownBundleIdentifier = BundleIdentity.normalize(exclusions.ownBundleIdentifier),
-           let appBundleIdentifier = BundleIdentity.normalize(app.bundleIdentifier),
-           ownBundleIdentifier == appBundleIdentifier {
-            return .thisApp
+        if let appBundleIdentifier = BundleIdentity.normalize(app.bundleIdentifier) {
+            if appBundleIdentifier == closeAllBundleIdentifier
+                || appBundleIdentifier == BundleIdentity.normalize(exclusions.ownBundleIdentifier) {
+                return .thisApp
+            }
         }
         if SystemProtection.isProtected(app.bundleIdentifier) {
             return .protectedSystem
@@ -142,16 +147,30 @@ public enum QuitPlanner {
         return nil
     }
 
-    /// Dock apps are listed. Menu-bar apps are listed only when they come from another
-    /// developer and have a bundle id, so Apple's own agents and unknown processes stay hidden.
-    /// UI-less background processes are never listed.
+    /// True for an app bundle that sits in `/Applications` or `~/Applications` (or a folder
+    /// inside them) and is not packed inside another app. Helpers such as
+    /// `Slack.app/Contents/Frameworks/Slack Helper.app` and updaters kept in Library folders fail this.
+    public static func isInstalledStandaloneApp(_ bundlePath: String?) -> Bool {
+        guard let bundlePath else { return false }
+        let components = bundlePath.split(separator: "/").map(String.init)
+        guard let last = components.last, last.lowercased().hasSuffix(".app") else { return false }
+        let inApplications = components.first == "Applications"
+            || (components.count > 3 && components[0] == "Users" && components[2] == "Applications")
+        let insideAnotherApp = components.dropLast().contains { $0.lowercased().hasSuffix(".app") }
+        return inApplications && !insideAnotherApp
+    }
+
+    /// Dock apps are listed. A menu-bar app is listed only when it is a standalone app the
+    /// user installed, has a bundle id, and is not Apple's, so system agents, helpers inside
+    /// other apps, and unknown processes stay hidden. UI-less processes are never listed.
     private static func listedGroup(for app: RunningApp) -> AppGroup? {
         switch app.activationPolicy {
         case .regular:
             return .dock
         case .accessory:
             guard let bundleIdentifier = BundleIdentity.normalize(app.bundleIdentifier),
-                  !bundleIdentifier.hasPrefix("com.apple.") else {
+                  !bundleIdentifier.hasPrefix("com.apple."),
+                  isInstalledStandaloneApp(app.bundlePath) else {
                 return nil
             }
             return .background

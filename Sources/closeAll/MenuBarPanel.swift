@@ -61,40 +61,39 @@ struct MenuBarPanel: View {
         .onAppear { model.refresh() }
     }
 
-    /// Menu-bar windows give a ScrollView no height unless one is set explicitly.
+    /// Dock apps, then the background apps in their own scroll area, so that section stays in
+    /// view even when many Dock apps are open.
     private var appList: some View {
-        let rowHeight: CGFloat = 28
-        let headerHeight: CGFloat = 18
-        let spacing: CGFloat = 6
         let dockRows = model.rows.filter { $0.group == .dock }
         let backgroundRows = model.rows.filter { $0.group == .background }
-        var heights = Array(repeating: rowHeight, count: dockRows.count)
-        if !backgroundRows.isEmpty {
-            heights.append(headerHeight)
-            heights += Array(repeating: rowHeight, count: backgroundRows.count)
+        return VStack(alignment: .leading, spacing: 8) {
+            if !dockRows.isEmpty {
+                rowList(dockRows, maxHeight: backgroundRows.isEmpty ? 240 : 200)
+            }
+            if !backgroundRows.isEmpty {
+                Text("Background apps (check to close)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                rowList(backgroundRows, maxHeight: 130)
+            }
         }
-        let contentHeight = heights.reduce(0, +) + CGFloat(max(heights.count - 1, 0)) * spacing
-        let visibleHeight = min(contentHeight, 280)
+    }
 
+    /// Menu-bar windows give a ScrollView no height unless one is set explicitly.
+    private func rowList(_ rows: [PresentedApp], maxHeight: CGFloat) -> some View {
+        let rowHeight: CGFloat = 28
+        let spacing: CGFloat = 6
+        let count = CGFloat(rows.count)
+        let contentHeight = count * rowHeight + max(count - 1, 0) * spacing
         return ScrollView {
             VStack(alignment: .leading, spacing: spacing) {
-                ForEach(dockRows) { row in
+                ForEach(rows) { row in
                     appRow(row)
-                }
-                if !backgroundRows.isEmpty {
-                    Text("Background apps (check to close)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .frame(height: headerHeight, alignment: .bottomLeading)
-                    ForEach(backgroundRows) { row in
-                        appRow(row)
-                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: visibleHeight)
+        .frame(height: min(contentHeight, maxHeight))
     }
 
     private func appRow(_ row: PresentedApp) -> some View {

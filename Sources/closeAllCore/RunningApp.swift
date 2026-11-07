@@ -11,19 +11,23 @@ public struct RunningApp: Equatable, Sendable {
     public let processIdentifier: Int32
     public let activationPolicy: ActivationPolicy
     public let isTerminated: Bool
+    /// File path of the app bundle, such as `/Applications/CopyClip.app`, when macOS reports one.
+    public let bundlePath: String?
 
     public init(
         bundleIdentifier: String?,
         localizedName: String,
         processIdentifier: Int32,
         activationPolicy: ActivationPolicy,
-        isTerminated: Bool = false
+        isTerminated: Bool = false,
+        bundlePath: String? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.localizedName = localizedName
         self.processIdentifier = processIdentifier
         self.activationPolicy = activationPolicy
         self.isTerminated = isTerminated
+        self.bundlePath = bundlePath
     }
 }
 
