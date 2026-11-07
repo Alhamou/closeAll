@@ -21,10 +21,16 @@ public enum QuitCopy {
         }
     }
 
-    public static func failureLine(failedCount: Int) -> String {
-        if failedCount == 1 {
-            return "Could not force quit 1 app."
+    public static let quittingTitle = "Closing…"
+
+    /// Names the apps that were still running after every attempt.
+    public static func failureLine(stillRunning names: [String]) -> String? {
+        guard !names.isEmpty else { return nil }
+        let shown = names.prefix(3).joined(separator: ", ")
+        let extra = names.count - 3
+        if extra > 0 {
+            return "Could not close \(shown) and \(extra) more."
         }
-        return "Could not force quit \(failedCount) apps."
+        return "Could not close \(shown)."
     }
 }

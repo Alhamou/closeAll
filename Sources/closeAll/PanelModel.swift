@@ -25,12 +25,17 @@ final class PanelModel: ObservableObject {
     }
 
     func refresh() {
-        let presented = SessionPresenter.presentedApps(currentSnapshot())
+        let snapshot = currentSnapshot()
+        // Session-only keeps are tied to a pid. Drop them once that process is gone,
+        // so a reused pid never inherits the choice.
+        let runningPIDs = Set(snapshot.apps.filter { !$0.isTerminated }.map(\.processIdentifier))
+        keptProcessIdentifiers.formIntersection(runningPIDs)
+        let presented = SessionPresenter.presentedApps(snapshot)
         rows = presented
         icons = MacRuntime.icons(for: presented.map(\.processIdentifier))
         quitCount = presented.filter(\.willQuit).count
         statusLine = QuitCopy.statusLine(quitCount: quitCount)
-        buttonTitle = QuitCopy.buttonTitle(quitCount: quitCount)
+        buttonTitle = isQuitting ? QuitCopy.quittingTitle : QuitCopy.buttonTitle(quitCount: quitCount)
     }
 
     func setWillQuit(_ willQuit: Bool, processIdentifier: Int32) {
@@ -60,18 +65,14 @@ final class PanelModel: ObservableObject {
     func forceQuit() {
         guard !isQuitting, quitCount > 0 else { return }
         isQuitting = true
+        failureMessage = nil
+        buttonTitle = QuitCopy.quittingTitle
         let exclusions = currentSnapshot().exclusions
-        let result = QuitExecutor.forceQuit(
-            apps: MacRuntime.currentApps(),
-            exclusions: exclusions
-        ) { app in
-            MacRuntime.forceTerminate(app, exclusions: exclusions)
-        }
-        failureMessage = result.failed.isEmpty ? nil : QuitCopy.failureLine(failedCount: result.failed.count)
-        refresh()
-        isQuitting = false
-        Task {
-            try? await Task.sleep(for: .milliseconds(700))
+        let runner = MacRuntime.quitRunner(exclusions: exclusions)
+        Task { @MainActor in
+            let outcome = await runner.run(exclusions: exclusions)
+            failureMessage = QuitCopy.failureLine(stillRunning: outcome.stillRunning.map(\.localizedName))
+            isQuitting = false
             refresh()
         }
     }

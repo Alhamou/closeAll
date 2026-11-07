@@ -33,14 +33,53 @@ enum MacRuntime {
     }
 
     static func forceTerminate(_ app: RunningApp, exclusions: QuitExclusions) -> Bool {
-        guard let liveApplication = NSRunningApplication(processIdentifier: app.processIdentifier) else {
-            return false
-        }
-        let live = map(liveApplication)
-        guard TerminationGuard.allow(app, live: live, exclusions: exclusions) else {
+        guard let liveApplication = guardedLiveApplication(app, exclusions: exclusions) else {
             return false
         }
         return liveApplication.forceTerminate()
+    }
+
+    /// Fallback when `forceTerminate()` was refused or the app is still running.
+    static func kill(_ app: RunningApp, exclusions: QuitExclusions) -> Bool {
+        guard guardedLiveApplication(app, exclusions: exclusions) != nil else {
+            return false
+        }
+        return Darwin.kill(app.processIdentifier, SIGKILL) == 0
+    }
+
+    /// True while the same app still owns this process id.
+    static func isRunning(_ app: RunningApp) -> Bool {
+        let processIdentifier = app.processIdentifier
+        guard processIdentifier > 0 else { return false }
+        if Darwin.kill(processIdentifier, 0) != 0, errno == ESRCH {
+            return false
+        }
+        guard let liveApplication = NSRunningApplication(processIdentifier: processIdentifier),
+              !liveApplication.isTerminated else {
+            return false
+        }
+        return BundleIdentity.same(liveApplication.bundleIdentifier, app.bundleIdentifier)
+    }
+
+    static func quitRunner(exclusions: QuitExclusions) -> QuitRunner {
+        QuitRunner(
+            currentApps: { MacRuntime.currentApps() },
+            forceTerminate: { MacRuntime.forceTerminate($0, exclusions: exclusions) },
+            kill: { MacRuntime.kill($0, exclusions: exclusions) },
+            isRunning: { MacRuntime.isRunning($0) },
+            sleep: { try? await Task.sleep(for: $0) }
+        )
+    }
+
+    private static func guardedLiveApplication(_ app: RunningApp, exclusions: QuitExclusions) -> NSRunningApplication? {
+        guard let liveApplication = NSRunningApplication(processIdentifier: app.processIdentifier),
+              !liveApplication.isTerminated else {
+            return nil
+        }
+        guard TerminationGuard.allow(app, live: map(liveApplication), exclusions: exclusions) else {
+            return nil
+        }
+        return liveApplication
     }
 
     private static func map(_ application: NSRunningApplication) -> RunningApp {

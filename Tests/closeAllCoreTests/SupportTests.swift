@@ -8,8 +8,12 @@ final class SupportTests: XCTestCase {
         XCTAssertEqual(QuitCopy.buttonTitle(quitCount: 4), "Force Quit 4 Apps")
         XCTAssertTrue(QuitCopy.statusLine(quitCount: 0).contains("Finder stays open"))
         XCTAssertTrue(QuitCopy.statusLine(quitCount: 2).contains("Unsaved changes"))
-        XCTAssertEqual(QuitCopy.failureLine(failedCount: 1), "Could not force quit 1 app.")
-        XCTAssertEqual(QuitCopy.failureLine(failedCount: 3), "Could not force quit 3 apps.")
+        XCTAssertNil(QuitCopy.failureLine(stillRunning: []))
+        XCTAssertEqual(QuitCopy.failureLine(stillRunning: ["Xcode"]), "Could not close Xcode.")
+        XCTAssertEqual(
+            QuitCopy.failureLine(stillRunning: ["A", "B", "C", "D", "E"]),
+            "Could not close A, B, C and 2 more."
+        )
     }
 
     func testKeptAppsStoreNormalizesAndSorts() {
