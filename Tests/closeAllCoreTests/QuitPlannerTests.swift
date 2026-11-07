@@ -6,28 +6,37 @@ func runningApp(
     bundle: String? = nil,
     pid: Int32,
     policy: ActivationPolicy = .regular,
-    terminated: Bool = false
+    terminated: Bool = false,
+    path: String? = nil
 ) -> RunningApp {
     RunningApp(
         bundleIdentifier: bundle,
         localizedName: name,
         processIdentifier: pid,
         activationPolicy: policy,
-        isTerminated: terminated
+        isTerminated: terminated,
+        bundlePath: path
     )
+}
+
+/// A menu-bar app installed as `/Applications/<name>.app`.
+func menuBarApp(_ name: String, bundle: String, pid: Int32) -> RunningApp {
+    runningApp(name, bundle: bundle, pid: pid, policy: .accessory, path: "/Applications/\(name).app")
 }
 
 func exclusions(
     ownPID: Int32 = 99,
     ownBundle: String? = "app.closeall.closeall",
     keptBundles: Set<String> = [],
-    keptPIDs: Set<Int32> = []
+    keptPIDs: Set<Int32> = [],
+    closedBackground: Set<String> = []
 ) -> QuitExclusions {
     QuitExclusions(
         ownProcessIdentifier: ownPID,
         ownBundleIdentifier: ownBundle,
         keptBundleIdentifiers: keptBundles,
-        keptProcessIdentifiers: keptPIDs
+        keptProcessIdentifiers: keptPIDs,
+        closedBackgroundBundleIdentifiers: closedBackground
     )
 }
 
@@ -86,11 +95,93 @@ final class QuitPlannerTests: XCTestCase {
         XCTAssertTrue(QuitPlanner.willQuit(safari, exclusions: exclusions()))
     }
 
-    func testAccessoryAndProhibitedAppsAreNotRegularTargets() {
-        let menuBar = runningApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 4, policy: .accessory)
+    func testBackgroundAppsStayOpenUntilChosen() {
+        let menuBar = menuBarApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 4)
         let agent = runningApp("chronod", bundle: "com.apple.chronod", pid: 5, policy: .prohibited)
-        XCTAssertEqual(QuitPlanner.skipReason(for: menuBar, exclusions: exclusions()), .notRegularApp)
+        XCTAssertEqual(QuitPlanner.skipReason(for: menuBar, exclusions: exclusions()), .backgroundNotChosen)
+        XCTAssertEqual(QuitPlanner.group(for: menuBar, exclusions: exclusions()), .background)
+        XCTAssertTrue(QuitPlanner.isToggleable(menuBar, exclusions: exclusions()))
         XCTAssertEqual(QuitPlanner.skipReason(for: agent, exclusions: exclusions()), .notRegularApp)
+        XCTAssertNil(QuitPlanner.group(for: agent, exclusions: exclusions()))
+    }
+
+    func testChosenBackgroundAppIsATargetIgnoringCase() {
+        let menuBar = menuBarApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 4)
+        let rules = exclusions(closedBackground: [" COM.IF.AMPHETAMINE "])
+        XCTAssertNil(QuitPlanner.skipReason(for: menuBar, exclusions: rules))
+        XCTAssertEqual(QuitPlanner.targets(for: [menuBar], exclusions: rules), [menuBar])
+    }
+
+    func testAppleAndUnknownBackgroundProcessesStayHiddenEvenIfChosen() {
+        let appleAgent = runningApp(
+            "Siri", bundle: "com.apple.Siri", pid: 20, policy: .accessory,
+            path: "/System/Applications/Siri.app"
+        )
+        let unknown = runningApp("helper", pid: 21, policy: .accessory, path: "/Applications/helper.app")
+        let uiless = runningApp("Sync", bundle: "com.example.sync", pid: 22, policy: .prohibited, path: "/Applications/Sync.app")
+        let noPath = runningApp("Mystery", bundle: "com.example.mystery", pid: 25, policy: .accessory)
+        let helper = runningApp(
+            "Slack Helper", bundle: "com.tinyspeck.slackmacgap.helper", pid: 26, policy: .accessory,
+            path: "/Applications/Slack.app/Contents/Frameworks/Slack Helper.app"
+        )
+        let updater = runningApp(
+            "Updater", bundle: "com.example.updater", pid: 27, policy: .accessory,
+            path: "/Library/Application Support/Example/Updater.app"
+        )
+        let rules = exclusions(closedBackground: [
+            "com.apple.siri", "com.example.sync", "com.example.mystery",
+            "com.tinyspeck.slackmacgap.helper", "com.example.updater",
+        ])
+        for app in [appleAgent, unknown, uiless, noPath, helper, updater] {
+            XCTAssertEqual(QuitPlanner.skipReason(for: app, exclusions: rules), .notRegularApp, app.localizedName)
+            XCTAssertNil(QuitPlanner.group(for: app, exclusions: rules), app.localizedName)
+        }
+    }
+
+    func testProtectedAndSelfNeverBecomeBackgroundTargets() {
+        let controlCenter = runningApp("Control Center", bundle: "com.apple.controlcenter", pid: 23, policy: .accessory)
+        let itself = menuBarApp("closeAll", bundle: "app.closeall.closeAll", pid: 24)
+        let rules = exclusions(closedBackground: ["com.apple.controlcenter", "app.closeall.closeall"])
+        XCTAssertEqual(QuitPlanner.skipReason(for: controlCenter, exclusions: rules), .protectedSystem)
+        XCTAssertEqual(QuitPlanner.skipReason(for: itself, exclusions: rules), .thisApp)
+        XCTAssertNil(QuitPlanner.group(for: controlCenter, exclusions: rules))
+        XCTAssertNil(QuitPlanner.group(for: itself, exclusions: rules))
+    }
+
+    func testAnotherCopyOfCloseAllIsSkippedWhenThisProcessIsUnbundled() {
+        let installed = menuBarApp("closeAll", bundle: "app.closeall.closeAll", pid: 24)
+        let rules = exclusions(ownBundle: nil, closedBackground: ["app.closeall.closeall"])
+        XCTAssertEqual(QuitPlanner.skipReason(for: installed, exclusions: rules), .thisApp)
+    }
+
+    func testOnlyStandaloneAppsInAnApplicationsFolderCount() {
+        XCTAssertTrue(QuitPlanner.isInstalledStandaloneApp("/Applications/CopyClip.app"))
+        XCTAssertTrue(QuitPlanner.isInstalledStandaloneApp("/Applications/Setapp/Haki.app"))
+        XCTAssertTrue(QuitPlanner.isInstalledStandaloneApp("/Users/emad/Applications/OpenBlock.app"))
+        XCTAssertTrue(QuitPlanner.isInstalledStandaloneApp("/Applications/AmneziaWG.APP/"))
+
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp(nil))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp(""))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Applications/Slack.app/Contents/Frameworks/Slack Helper.app"))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Applications/Microsoft Teams.app/Contents/Helpers/Teams WebView.app"))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Library/Application Support/Example/Updater.app"))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Users/emad/Library/Application Support/ChatGPT/Computer Use.app"))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Users/emad/Downloads/Tool.app"))
+        XCTAssertFalse(QuitPlanner.isInstalledStandaloneApp("/Applications/zcode-cli"))
+    }
+
+    func testKeepingWinsOverAChosenBackgroundApp() {
+        let menuBar = menuBarApp("Amphetamine", bundle: "com.if.Amphetamine", pid: 4)
+        let rules = exclusions(keptBundles: ["com.if.amphetamine"], closedBackground: ["com.if.amphetamine"])
+        XCTAssertEqual(QuitPlanner.skipReason(for: menuBar, exclusions: rules), .keptByUser)
+    }
+
+    func testDockAppIgnoresTheBackgroundList() {
+        let slack = runningApp("Slack", bundle: "com.tinyspeck.slackmacgap", pid: 30)
+        XCTAssertEqual(QuitPlanner.group(for: slack, exclusions: exclusions()), .dock)
+        XCTAssertNil(QuitPlanner.skipReason(for: slack, exclusions: exclusions()))
+        let rules = exclusions(keptBundles: ["com.tinyspeck.slackmacgap"], closedBackground: ["com.tinyspeck.slackmacgap"])
+        XCTAssertEqual(QuitPlanner.skipReason(for: slack, exclusions: rules), .keptByUser)
     }
 
     func testSelfIsSkippedByProcessIdentifier() {

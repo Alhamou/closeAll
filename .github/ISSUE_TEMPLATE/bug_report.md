@@ -18,7 +18,7 @@ labels: bug
 ## Environment
 
 - macOS version:
-- closeAll version (see `Resources/Info.plist`, currently 1.0.0):
+- closeAll version (see `CFBundleShortVersionString` in `Resources/Info.plist`):
 - Did you build with `make app`, or run `swift run closeAll`?
 
 ## Quit plan

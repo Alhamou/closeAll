@@ -28,13 +28,16 @@ The repository image is [`docs/logo-512.png`](docs/logo-512.png), 512×512 pixel
 
 - Every app macOS treats as a normal application. Those are the apps you would otherwise right-click in the Dock and choose Quit.
 - Editors, browsers, and chat apps are included. Cursor is included until you uncheck it.
+- Background apps you check. The **Background apps** section lists menu-bar apps you installed in `/Applications` or `~/Applications`, such as a clipboard manager or a VPN client. They start unchecked, so nothing there closes unless you check it. The choice is remembered.
+
+closeAll checks that each app really exited. If one survives Force Quit or comes straight back, it sends a hard kill (SIGKILL), up to three times. Apps it still could not close are named in red.
 
 ## What stays open
 
 - **Finder**, so the desktop stays up.
 - **closeAll** itself, so the button is still there.
 - The Dock, Control Center, WindowServer, and the other processes that keep the login session alive.
-- Menu-bar-only helpers. They are not Dock apps. Quitting the parent app usually takes its helpers with it.
+- Background apps you did not check. Apple's own menu-bar agents, helpers packed inside another app (such as Slack Helper), updaters kept in Library folders, and processes with no window or menu are not listed at all. They usually close with their parent app.
 - Any app you uncheck.
 
 ## Requirements
@@ -65,7 +68,8 @@ To open it at login, add `closeAll.app` in System Settings → General → Login
 
 1. Click the stack-of-windows icon at the top of the screen.
 2. Leave a check on every app that should close. Remove the check to keep one.
-3. Press **Force Quit**.
+3. Under **Background apps**, check any menu-bar app that should close too.
+4. Press **Force Quit**.
 
 Force Quit does not ask those apps to save. Close anything with unsaved work first, or uncheck it.
 

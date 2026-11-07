@@ -27,6 +27,7 @@ struct MenuBarPanel: View {
                     .foregroundStyle(.secondary)
             } else {
                 appList
+                    .disabled(model.isQuitting)
             }
 
             Button {
@@ -60,30 +61,50 @@ struct MenuBarPanel: View {
         .onAppear { model.refresh() }
     }
 
-    /// Menu-bar windows give a ScrollView no height unless one is set explicitly.
+    /// Dock apps, then the background apps in their own scroll area, so that section stays in
+    /// view even when many Dock apps are open.
     private var appList: some View {
+        let dockRows = model.rows.filter { $0.group == .dock }
+        let backgroundRows = model.rows.filter { $0.group == .background }
+        return VStack(alignment: .leading, spacing: 8) {
+            if !dockRows.isEmpty {
+                rowList(dockRows, maxHeight: backgroundRows.isEmpty ? 240 : 200)
+            }
+            if !backgroundRows.isEmpty {
+                Text("Background apps (check to close)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                rowList(backgroundRows, maxHeight: 130)
+            }
+        }
+    }
+
+    /// Menu-bar windows give a ScrollView no height unless one is set explicitly.
+    private func rowList(_ rows: [PresentedApp], maxHeight: CGFloat) -> some View {
         let rowHeight: CGFloat = 28
         let spacing: CGFloat = 6
-        let count = CGFloat(model.rows.count)
+        let count = CGFloat(rows.count)
         let contentHeight = count * rowHeight + max(count - 1, 0) * spacing
-        let visibleHeight = min(contentHeight, 240)
-
         return ScrollView {
             VStack(alignment: .leading, spacing: spacing) {
-                ForEach(model.rows) { row in
-                    Toggle(isOn: willQuitBinding(for: row.processIdentifier)) {
-                        HStack(spacing: 6) {
-                            appIcon(for: row.processIdentifier)
-                            Text(row.title)
-                                .lineLimit(1)
-                        }
-                    }
-                    .toggleStyle(.checkbox)
+                ForEach(rows) { row in
+                    appRow(row)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: visibleHeight)
+        .frame(height: min(contentHeight, maxHeight))
+    }
+
+    private func appRow(_ row: PresentedApp) -> some View {
+        Toggle(isOn: willQuitBinding(for: row.processIdentifier)) {
+            HStack(spacing: 6) {
+                appIcon(for: row.processIdentifier)
+                Text(row.title)
+                    .lineLimit(1)
+            }
+        }
+        .toggleStyle(.checkbox)
     }
 
     private func appIcon(for processIdentifier: Int32) -> some View {

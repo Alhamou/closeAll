@@ -3,6 +3,7 @@ public struct PresentedApp: Equatable, Sendable, Identifiable {
     public let bundleIdentifier: String?
     public let title: String
     public let willQuit: Bool
+    public let group: AppGroup
 
     public var id: Int32 { processIdentifier }
 
@@ -10,30 +11,49 @@ public struct PresentedApp: Equatable, Sendable, Identifiable {
         processIdentifier: Int32,
         bundleIdentifier: String?,
         title: String,
-        willQuit: Bool
+        willQuit: Bool,
+        group: AppGroup = .dock
     ) {
         self.processIdentifier = processIdentifier
         self.bundleIdentifier = bundleIdentifier
         self.title = title
         self.willQuit = willQuit
+        self.group = group
     }
 }
 
 public enum SessionPresenter {
+    /// Dock apps first, then background apps, each sorted by name.
     public static func presentedApps(_ snapshot: SessionSnapshot) -> [PresentedApp] {
-        let listed = QuitPlanner.decisions(for: snapshot.apps, exclusions: snapshot.exclusions)
-            .map(\.app)
-            .filter { QuitPlanner.isToggleable($0, exclusions: snapshot.exclusions) }
-            .sorted(by: QuitPlanner.sortApps)
-        let duplicateNames = duplicateNameKeys(in: listed)
-        return listed.map { app in
+        let listed: [Listed] = QuitPlanner
+            .decisions(for: snapshot.apps, exclusions: snapshot.exclusions)
+            .compactMap { decision -> Listed? in
+                guard let group = QuitPlanner.group(for: decision.app, exclusions: snapshot.exclusions) else {
+                    return nil
+                }
+                return Listed(app: decision.app, group: group)
+            }
+            .sorted { lhs, rhs in
+                if lhs.group != rhs.group {
+                    return lhs.group == .dock
+                }
+                return QuitPlanner.sortApps(lhs.app, rhs.app)
+            }
+        let duplicateNames = duplicateNameKeys(in: listed.map { $0.app })
+        return listed.map { entry in
             PresentedApp(
-                processIdentifier: app.processIdentifier,
-                bundleIdentifier: BundleIdentity.normalize(app.bundleIdentifier),
-                title: title(for: app, duplicateNames: duplicateNames),
-                willQuit: QuitPlanner.willQuit(app, exclusions: snapshot.exclusions)
+                processIdentifier: entry.app.processIdentifier,
+                bundleIdentifier: BundleIdentity.normalize(entry.app.bundleIdentifier),
+                title: title(for: entry.app, duplicateNames: duplicateNames),
+                willQuit: QuitPlanner.willQuit(entry.app, exclusions: snapshot.exclusions),
+                group: entry.group
             )
         }
+    }
+
+    private struct Listed {
+        let app: RunningApp
+        let group: AppGroup
     }
 
     private static func duplicateNameKeys(in apps: [RunningApp]) -> Set<String> {

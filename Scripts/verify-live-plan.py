@@ -16,7 +16,12 @@ for target in targets:
         problems.append(f"own process {own_pid} is a target")
     if bundle and (bundle in protected or bundle == "com.apple.dock" or bundle.startswith("com.apple.dock.")):
         problems.append(f"protected app is a target: {bundle}")
-    if target.get("activationPolicy") != "regular":
+    policy = target.get("activationPolicy")
+    if policy == "accessory":
+        # A background app may close only if the user checked it, and never an Apple agent.
+        if not bundle or bundle.startswith("com.apple."):
+            problems.append(f"system background process is a target: {target}")
+    elif policy != "regular":
         problems.append(f"non-regular target: {target}")
     if target.get("reason") is not None:
         problems.append(f"target has a skip reason: {target}")

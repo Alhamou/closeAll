@@ -7,9 +7,13 @@ enum DryRunCLI {
         let kept = KeptAppsStore.load(
             from: UserDefaults.standard.stringArray(forKey: KeptAppsStore.defaultsKey)
         )
+        let closedBackground = KeptAppsStore.load(
+            from: UserDefaults.standard.stringArray(forKey: KeptAppsStore.closedBackgroundDefaultsKey)
+        )
         let snapshot = MacRuntime.snapshot(
             keptBundleIdentifiers: kept,
-            keptProcessIdentifiers: []
+            keptProcessIdentifiers: [],
+            closedBackgroundBundleIdentifiers: closedBackground
         )
         do {
             let json = try DryRunReport.make(snapshot).json()

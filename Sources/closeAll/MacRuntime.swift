@@ -7,14 +7,19 @@ enum MacRuntime {
         NSWorkspace.shared.runningApplications.map(map)
     }
 
-    static func snapshot(keptBundleIdentifiers: Set<String>, keptProcessIdentifiers: Set<Int32>) -> SessionSnapshot {
+    static func snapshot(
+        keptBundleIdentifiers: Set<String>,
+        keptProcessIdentifiers: Set<Int32>,
+        closedBackgroundBundleIdentifiers: Set<String>
+    ) -> SessionSnapshot {
         SessionSnapshot(
             apps: currentApps(),
             exclusions: QuitExclusions(
                 ownProcessIdentifier: ProcessInfo.processInfo.processIdentifier,
                 ownBundleIdentifier: Bundle.main.bundleIdentifier,
                 keptBundleIdentifiers: keptBundleIdentifiers,
-                keptProcessIdentifiers: keptProcessIdentifiers
+                keptProcessIdentifiers: keptProcessIdentifiers,
+                closedBackgroundBundleIdentifiers: closedBackgroundBundleIdentifiers
             )
         )
     }
@@ -90,7 +95,8 @@ enum MacRuntime {
             localizedName: displayName,
             processIdentifier: application.processIdentifier,
             activationPolicy: policy(application.activationPolicy),
-            isTerminated: application.isTerminated
+            isTerminated: application.isTerminated,
+            bundlePath: application.bundleURL?.path
         )
     }
 
